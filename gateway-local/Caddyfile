@@ -1,0 +1,45 @@
+{
+    auto_https off
+}
+
+:8080 {
+    header {
+        Access-Control-Allow-Origin "http://localhost:4200"
+        Access-Control-Allow-Headers "Authorization, Content-Type"
+        Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        Access-Control-Max-Age "3600"
+    }
+
+    @preflight method OPTIONS
+    handle @preflight {
+        respond 204
+    }
+
+    handle /api/v1/productos* {
+        reverse_proxy app-productos:8081
+    }
+    handle /api/carrito* {
+        reverse_proxy app-carrito:8082
+    }
+    handle /api/usuario* {
+        reverse_proxy app-usuario:8083
+    }
+    handle /api/ordenes* {
+        reverse_proxy app-ordenes:8084
+    }
+    handle /api/despachos* {
+        reverse_proxy app-despachos:8085
+    }
+    handle /api/notificaciones* {
+        reverse_proxy app-notificaciones:8086
+    }
+    handle /api/recomendaciones* {
+        reverse_proxy app-recomendaciones:8087
+    }
+    handle /api/pagos* {
+        reverse_proxy app-pagos:8088
+    }
+    handle {
+        respond "Ruta no encontrada" 404
+    }
+}

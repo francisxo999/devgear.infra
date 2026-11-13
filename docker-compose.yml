@@ -1,0 +1,264 @@
+# Va en la RAÍZ de tu carpeta backend/ (reemplaza el que ya tienes ahí)
+# Levanta los 4 microservicios, sus 4 bases de datos, y RabbitMQ, todos en una
+# sola red, para pruebas locales completas antes de desplegar a AWS.
+#
+# Uso: docker-compose up --build
+
+services:
+  db-productos:
+    image: mysql:8.0
+    container_name: mysql-devgear
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: productos_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_productos_data:/var/lib/mysql
+    networks:
+      - devgear-net
+
+  db-carrito:
+    image: mysql:8.0
+    container_name: mysql-carrito
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: carrito_db
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_carrito_data:/var/lib/mysql
+    networks:
+      - devgear-net
+
+  db-ordenes:
+    image: mysql:8.0
+    container_name: mysql-ordenes
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ordenes_db
+    ports:
+      - "3309:3306"
+    volumes:
+      - db_ordenes_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - devgear-net
+
+  db-despachos:
+    image: mysql:8.0
+    container_name: mysql-despachos
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: despachos_db
+    ports:
+      - "3310:3306"
+    volumes:
+      - db_despachos_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - devgear-net
+
+  rabbitmq:
+    image: rabbitmq:4.2-management
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - devgear-net
+
+  app-productos:
+    build: ./ms-productos
+    container_name: devgear-ms-productos-1
+    restart: always
+    ports:
+      - "8081:8081"
+    depends_on:
+      - db-productos
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db-productos:3306/productos_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9092
+    networks:
+      - devgear-net
+
+  app-carrito:
+    build: ./ms-carrito
+    container_name: devgear-ms-carrito-1
+    restart: always
+    ports:
+      - "8082:8082"
+    depends_on:
+      - db-carrito
+      - app-productos
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db-carrito:3306/carrito_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      PRODUCTOS_API_BASE_URL: http://app-productos:8081
+      KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9092
+    networks:
+      - devgear-net
+
+  app-ordenes:
+    build: ./ms-ordenes
+    container_name: devgear-ms-ordenes-1
+    restart: always
+    ports:
+      - "8084:8084"
+    depends_on:
+      db-ordenes:
+        condition: service_healthy
+      app-carrito:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db-ordenes:3306/ordenes_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      CARRITO_API_BASE_URL: http://app-carrito:8082
+      RABBITMQ_HOST: rabbitmq
+    networks:
+      - devgear-net
+
+  app-notificaciones:
+    build: ./ms-notificaciones
+    container_name: devgear-ms-notificaciones-1
+    restart: always
+    ports:
+      - "8086:8086"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+    networks:
+      - devgear-net
+
+  app-despachos:
+    build: ./ms-despachos
+    container_name: devgear-ms-despachos-1
+    restart: always
+    ports:
+      - "8085:8085"
+    depends_on:
+      db-despachos:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db-despachos:3306/despachos_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      RABBITMQ_HOST: rabbitmq
+    networks:
+      - devgear-net
+
+  app-usuario:
+    build: ./ms-usuario
+    container_name: devgear-ms-usuario-1
+    restart: always
+    ports:
+      - "8083:8083"
+    networks:
+      - devgear-net
+
+  db-recomendaciones:
+    image: mysql:8.0
+    container_name: mysql-recomendaciones
+    restart: always
+    environment: { MYSQL_ROOT_PASSWORD: root, MYSQL_DATABASE: recomendaciones_db }
+    ports: ["3311:3306"]
+    volumes: [db_recomendaciones_data:/var/lib/mysql]
+    networks: [devgear-net]
+
+  app-recomendaciones:
+    build: ./ms-recomendaciones
+    container_name: devgear-ms-recomendaciones-1
+    restart: always
+    ports: ["8087:8087"]
+    depends_on: [db-recomendaciones]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db-recomendaciones:3306/recomendaciones_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9092
+      PRODUCTOS_API_BASE_URL: http://app-productos:8081
+    networks: [devgear-net]
+
+  db-pagos:
+    image: mysql:8.0
+    container_name: mysql-pagos
+    restart: always
+    environment: { MYSQL_ROOT_PASSWORD: root, MYSQL_DATABASE: pagos_db }
+    ports: ["3312:3306"]
+    volumes: [db_pagos_data:/var/lib/mysql]
+    networks: [devgear-net]
+
+  app-pagos:
+    build: ./ms-pagos
+    container_name: devgear-ms-pagos-1
+    restart: always
+    ports: ["8088:8088"]
+    depends_on: [db-pagos]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db-pagos:3306/pagos_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9092
+      CARRITO_API_BASE_URL: http://app-carrito:8082
+      ORDENES_API_BASE_URL: http://app-ordenes:8084
+      WEBPAY_RETURN_URL: http://localhost:4200/pago/resultado
+    networks: [devgear-net]
+
+  gateway-local:
+    image: caddy:2
+    container_name: devgear-gateway-local
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./gateway-local/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      - devgear-net
+
+networks:
+  devgear-net:
+    driver: bridge
+
+volumes:
+  db_productos_data:
+  db_carrito_data:
+  db_ordenes_data:
+  rabbitmq_data:
+  db_despachos_data:
+  db_recomendaciones_data:
+  db_pagos_data:

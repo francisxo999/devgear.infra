@@ -1,0 +1,12 @@
+# Secretos: nunca se suben
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Basura de herramientas
+node_modules/
+target/
+.idea/
+.vscode/
