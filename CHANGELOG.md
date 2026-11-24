@@ -5,3 +5,5 @@
 * v1.1.1: Incluye el archivo seed/seed-productos.sql que no se subió en la v1.1.0.
 
 * v1.1.1: Incluye el archivo seed/seed-productos.sql que no se subió en la v1.1.0.
+
+* v1.2.0: Se agregaron las Lambdas, el script de despliegue y la documentación de la telemetría en tiempo real con DynamoDB y API Gateway WebSocket.
